@@ -66,19 +66,20 @@ def get_position(img, pose_landmarks, draw=True, selected=None):
     return np.array(lm_list), np.array(w_list)
 
 
-def draw_position(img, pose_landmarks, lm_list):
+def draw_position(img, pose_landmarks, lm_list, put_text=True):
     for i, (cx, cy) in enumerate(lm_list):
         cv2.circle(img, (cx, cy), 2, (255, 0, 0), cv2.FILLED)
-        cv2.putText(
-            img,
-            str(i),
-            (cx, cy),
-            cv2.FONT_HERSHEY_DUPLEX,
-            1.5,
-            (127, 255, 127),
-            1,
-            cv2.LINE_AA,
-        )
+        if put_text:
+            cv2.putText(
+                img,
+                str(i),
+                (cx, cy),
+                cv2.FONT_HERSHEY_DUPLEX,
+                1.5,
+                (127, 255, 127),
+                1,
+                cv2.LINE_AA,
+            )
     if pose_landmarks is not None:
         mp_draw.draw_landmarks(img, pose_landmarks, mp_pose.POSE_CONNECTIONS)
     return img

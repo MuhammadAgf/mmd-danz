@@ -52,6 +52,7 @@ def join_camera_video(
             img=video_frame,
             pose_landmarks=video_stat["pose_landmark"],
             lm_list=video_stat["lm_list"],
+            put_text=False
         )
 
     y_min, y_max, x_min, x_max = cue_stat["crop_orig"]
@@ -176,7 +177,6 @@ def play_game(
         elapsed = (time.time() - start_time) * 1000  # msec
         if elapsed >= last_score_calculate + 1000 or cue is not None:
             if cue is None or cur_frame >= cue["end"]:
-                print(cur_frame, cue)
                 pose_realtime.infer_pose(camera_frame, lm_video, w_vid, video_frame)
                 last_score_calculate = (time.time() - start_time) * 1000
 
