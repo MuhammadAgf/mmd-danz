@@ -2,6 +2,13 @@
 
 `mmd-danz` is a dancing game that requires players to mirror dance moves as they appear on the screen in real-time while watching themselves in a webcam preview. The game is written in Python and uses the `OpenCV` and `Mediapipe` libraries for image processing, and `ffpyplayer` for audio playback.
 
+## Demo
+
+Click the image below for the demo:
+
+[![rolling girl demo](https://img.youtube.com/vi/6L7QownxoJg/0.jpg)](https://www.youtube.com/watch?v=6L7QownxoJg)
+
+
 ## Installation
 
 To run `mmd-danz`, you need to have Python 3.x installed on your computer. Clone the project repository and navigate to the project directory:
@@ -40,9 +47,9 @@ During the game, the player will see themselves in real-time in the webcam previ
 
 
 ## Data Path 
-Link to the sample video [here](https://youtu.be/3JiWG0bRels).
+Link to the original video that is used as the sample above: [here](https://youtu.be/3JiWG0bRels).
 
-for a data path to be valid as the directory to play it needs 3 files inside it
+for a data path to be valid as the directory to play the game, it needs 3 files inside it:
 
 * `video.mp4` the video file to be played.
 * `frame_dictionary.pickle`  previously generated pickle file with processed video (video.mp4) frames.
