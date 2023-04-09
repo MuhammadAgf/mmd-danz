@@ -1,6 +1,9 @@
 from collections import deque
+
 import cv2 as cv
+
 # https://github.com/whitphx/Tokyo2020-Pictogram-using-MediaPipe/blob/d325587cdb5c15ecbe95bd892eb760dfc80e9124/utils/cvfpscalc.py
+
 
 class CvFpsCalc(object):
     def __init__(self, buffer_len=1):

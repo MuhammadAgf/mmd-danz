@@ -1,12 +1,13 @@
-from multiprocessing import Queue, Process
+import logging
+import multiprocessing
+import time
+from multiprocessing import Process, Queue
 
 import cv2
-import numpy as np
 import mediapipe as mp
+import numpy as np
 
-import multiprocessing
-import logging
-import time
+from src.utils import center_map, draw_position, get_position
 
 logger = multiprocessing.log_to_stderr()
 logger.setLevel(multiprocessing.SUBDEBUG)
@@ -15,40 +16,43 @@ logger.setLevel(multiprocessing.SUBDEBUG)
 _SENTINEL_ = "_SENTINEL_"
 
 
-def similarity(v1, v2):
-    # Scale v1 and v2 to have the same size
-    norm_v1 = np.linalg.norm(v1, axis=1, keepdims=True)
-    norm_v2 = np.linalg.norm(v2, axis=1, keepdims=True)
-    v1_scaled = v1 * (norm_v2 / norm_v1)
-    v2_scaled = v2 * (norm_v1 / norm_v2)
+def get_score_bin(v1, v2, w1, w2, center_map, thresh=0.925):
+    norm_v1 = v1 / np.linalg.norm(v1)
+    norm_v2 = v2 / np.linalg.norm(v2)
 
-    # Center v1_scaled and v2_scaled to (0,0)
-    center = np.mean(np.concatenate([v1_scaled, v2_scaled], axis=0), axis=0)
-    v1_centered = v1_scaled - center
-    v2_centered = v2_scaled - center
+    center = np.mean(norm_v1[center_map] - norm_v2[center_map], axis=0)
 
-    # Calculate the cosine similarity between corresponding vectors in v1_centered and v2_centered
-    dot_products = np.sum(v1_centered * v2_centered, axis=1, keepdims=True)
-    norms = np.linalg.norm(v1_centered, axis=1, keepdims=True) * np.linalg.norm(v2_centered, axis=1, keepdims=True)
-    similarity_scores = dot_products / norms
+    center_v1 = norm_v1 - center
+    center_v2 = norm_v2
 
-    # Calculate the average similarity score
-    similarity = np.mean(similarity_scores)
-    return similarity
+    w = w1 * w2
+    w[center_map] = np.nan
+
+    score = np.nansum(
+        w
+        * ((1 - np.linalg.norm(center_v1 - center_v2, axis=1, keepdims=True)) > thresh)
+        .astype(int)
+        .ravel()
+    ) / np.nansum(w)
+    return score
 
 
-def get_position(img, pose_landmarks, draw=True):
-    if pose_landmarks is None:
-        return []
-    lm_list = []
-    for i, lm in enumerate(pose_landmarks.landmark):
-        h, w, c = img.shape
-        cx, cy = int(lm.x * w), int(lm.y * h)
-        lm_list.append([cx, cy])
-    del lm_list[1:11]
-    if draw:
-        mp_draw.draw_landmarks(img, pose_landmarks, mp_pose.POSE_CONNECTIONS)
-    return np.array(lm_list)
+def get_score(v1, v2, w1, w2, center_map):
+    norm_v1 = v1 / np.linalg.norm(v1)
+    norm_v2 = v2 / np.linalg.norm(v2)
+
+    center = np.mean(norm_v1[center_map] - norm_v2[center_map], axis=0)
+
+    center_v1 = norm_v1 - center
+    center_v2 = norm_v2
+
+    w = w1 * w2
+    w[center_map] = np.nan
+
+    score = np.nansum(
+        w * (1 - np.linalg.norm(center_v1 - center_v2, axis=1, keepdims=True)).ravel()
+    ) / np.nansum(w)
+    return score
 
 
 def pose_process(
@@ -69,64 +73,67 @@ def pose_process(
     )
 
     while True:
-        input_item = in_queue.get(timeout=10)
+        input_item = in_queue.get(timeout=20)
         if isinstance(input_item, type(_SENTINEL_)) and input_item == _SENTINEL_:
             break
         logger.info(str(type(input_item)))
         logger.info(str(len(input_item)))
-        camera_frame, lm_vid, video_frame, counter = input_item
+        camera_frame, lm_vid, w_vid, video_frame, counter = input_item
         if len(lm_vid) < 1:
             out_queue.put_nowait(np.nan)
             continue
 
-        keypoints = pose.process(camera_frame)
-        lm_cam = get_position(camera_frame, keypoints.pose_landmarks, False)
-        score = similarity(lm_vid, lm_cam)
+        keypoints = pose.process(cv2.cvtColor(camera_frame, cv2.COLOR_BGR2RGB))
+        # camera_frame = cv2.flip(camera_frame, 1)
+        lm_cam, w_cam = get_position(camera_frame, keypoints.pose_landmarks, False)
+        camera_frame = draw_position(camera_frame, keypoints.pose_landmarks, lm_cam)
+        video_frame = draw_position(video_frame, None, lm_vid)
+        score = get_score_bin(lm_vid, lm_cam, w_vid, w_cam, center_map)
         out_queue.put_nowait(score)
-        log_queue.put_nowait(
-            (counter, camera_frame, video_frame, score)
-        )
+        log_queue.put_nowait((counter, camera_frame, video_frame, score))
+
 
 def log_process(log_queue: Queue):
     while True:
-
-        input_item = log_queue.get(timeout=10)
+        input_item = log_queue.get(timeout=20)
         if isinstance(input_item, type(_SENTINEL_)) and input_item == _SENTINEL_:
             break
 
         counter, camera_frame, video_frame, score = input_item
-        cv2.imwrite(f'./logs/{counter}_camera.jpg', camera_frame)
-        cv2.imwrite(f'./logs/{counter}_video.jpg', video_frame)
-        with open('./logs/log.txt', 'a') as f:
-            f.write(f'ct: {counter}, score: {score}\n')
+        cv2.imwrite(f"./logs/{counter}_camera.jpg", camera_frame)
+        cv2.imwrite(f"./logs/{counter}_video.jpg", video_frame)
+        with open("./logs/log.txt", "a") as f:
+            f.write(f"ct: {counter}, score: {score}\n")
+
 
 class PoseProcess:
-
     def __init__(
-            self,
-            model_complexity,
-            static_image_mode,
-            min_detection_confidence,
-            min_tracking_confidence,
-        ):
-
+        self,
+        model_complexity,
+        static_image_mode,
+        min_detection_confidence,
+        min_tracking_confidence,
+    ):
         self._in_queue = Queue()
         self._out_queue = Queue()
         self._log_queue = Queue()
 
-        self._pose_process = Process(target=pose_process, kwargs={
-            "in_queue": self._in_queue,
-            "out_queue": self._out_queue,
-            'log_queue': self._log_queue,
-            "static_image_mode": static_image_mode,
-            "model_complexity": model_complexity,
-            "min_detection_confidence": min_detection_confidence,
-            "min_tracking_confidence": min_tracking_confidence,
-        })
+        self._pose_process = Process(
+            target=pose_process,
+            kwargs={
+                "in_queue": self._in_queue,
+                "out_queue": self._out_queue,
+                "log_queue": self._log_queue,
+                "static_image_mode": static_image_mode,
+                "model_complexity": model_complexity,
+                "min_detection_confidence": min_detection_confidence,
+                "min_tracking_confidence": min_tracking_confidence,
+            },
+        )
         self._pose_process.start()
-        self._log_process = Process(target=log_process, kwargs={
-            'log_queue': self._log_queue
-        })
+        self._log_process = Process(
+            target=log_process, kwargs={"log_queue": self._log_queue}
+        )
         self._log_process.start()
         self._counter = 0
 
@@ -135,12 +142,10 @@ class PoseProcess:
             return self._out_queue.get(timeout=10)
         return None
 
-    def infer_pose(self, camera_frame, lm_video, video_frame=None):
+    def infer_pose(self, camera_frame, lm_video, w_vid, video_frame=None):
         self._counter += 1
         counter = self._counter
-        self._in_queue.put_nowait(
-            (camera_frame, lm_video, video_frame, counter)
-        )
+        self._in_queue.put_nowait((camera_frame, lm_video, w_vid, video_frame, counter))
 
     def stop_pose_process(self):
         self._in_queue.put_nowait(_SENTINEL_)

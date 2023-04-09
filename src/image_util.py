@@ -1,9 +1,10 @@
 from typing import Optional, Tuple
+
 import cv2
 import numpy as np
 
-def crop_image(img, vectors):
 
+def crop_image(img, vectors):
     center_x = np.mean(vectors[:, 0])
     center_y = np.mean(vectors[:, 1])
     center = (center_x, center_y)
@@ -24,7 +25,7 @@ def crop_image(img, vectors):
         y = img.shape[0] - h
 
     # Extract the cropped region from the image
-    img_cropped = cv2.getRectSubPix(img, (w, h), (x + w/2, y + h/2))
+    img_cropped = cv2.getRectSubPix(img, (w, h), (x + w / 2, y + h / 2))
     return img_cropped
 
 
@@ -34,7 +35,7 @@ def crop_unstable(image, keypoints, ratio):
     y_min = int(min(keypoints[:, 1]) - int(image.shape[0] * ratio))
     y_max = int(max(keypoints[:, 1]) + int(image.shape[1] * ratio))
 
-        # Crop the image to the bounding box of the keypoints
+    # Crop the image to the bounding box of the keypoints
     cropped_image = image[
         max(y_min, 0) : min(y_max, image.shape[0] - 1),
         max(x_min, 0) : min(x_max, image.shape[1] - 1),
@@ -42,13 +43,15 @@ def crop_unstable(image, keypoints, ratio):
     return cropped_image
 
 
-def resize_and_concat_images(keypoints, image, reference_image, ratio=0.08, flip=False):
+def resize_and_concat_images(image, reference_image, ratio=0.08, flip=False):
     # Find the bounding box of the keypoints
     if len(keypoints) > 0:
-        #cropped_image = crop_unstable(image, keypoints, ratio)
+        # cropped_image = crop_unstable(image, keypoints, ratio)
         cropped_image = crop_image(image, keypoints)
     else:
-        cropped_image = crop_image(image, np.array([[image.shape[0]//2 , image.shape[1]//2]]))
+        cropped_image = crop_image(
+            image, np.array([[image.shape[0] // 2, image.shape[1] // 2]])
+        )
     # Compute the scale factor based on the height of the reference image
     scale_factor = reference_image.shape[0] / cropped_image.shape[0]
 
